@@ -48,6 +48,20 @@ poolContract.events.Unstaked()
     try {
       await initiateWithdrawal(unstakeAmount);
       console.log("✅ Withdrawal Process Initiated Successfully!");
+
+      // Wait for ETH to be withdrawn before distributing funds
+      setTimeout(async () => {
+        console.log("💰 Checking if ETH is available for distribution...");
+        
+        const contractBalance = await web3.eth.getBalance(POOL_CONTRACT);
+        if (contractBalance >= unstakeAmount) {
+          console.log("💸 ETH Withdrawn! Distributing funds to depositors...");
+          await callDistributeFunds();
+        } else {
+          console.log("❌ ETH has not yet arrived in the contract. Will retry.");
+        }
+      }, 60000); // Adjust delay based on expected withdrawal confirmation time
+
     } catch (error) {
       console.error("❌ Withdrawal Process Failed:", error.message);
     }
@@ -55,6 +69,20 @@ poolContract.events.Unstaked()
   .on("error", (error) => {
     console.error("⚠️ Unstake Event Error:", error);
   });
+
+// Function to call `distributeWithdrawnFunds()` on the smart contract
+async function callDistributeFunds() {
+  try {
+    const tx = await poolContract.methods.distributeWithdrawnFunds().send({
+      from: "0xYourWalletAddress",  // Replace with the admin/deployer's address
+      gas: 300000
+    });
+    console.log("✅ Funds Distributed Successfully! TX Hash:", tx.transactionHash);
+  } catch (error) {
+    console.error("❌ Error Distributing Funds:", error.message);
+  }
+}
+
 
 // **Execute Staking Script (`restake.js`)**
 function triggerStaking() {

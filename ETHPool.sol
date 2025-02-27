@@ -8,6 +8,7 @@ interface IEigenLayer {
 contract ETHPool {
     uint256 public constant STAKING_THRESHOLD = 32 ether;
     uint256 public constant UNSTAKE_VOTE_THRESHOLD_PERCENT = 51;
+    uint256 public constant MAX_DEPOSIT_PER_USER = 5 ether;
 
     mapping(address => uint256) public deposits;
     mapping(address => bool) public hasVotedForUnstake;
@@ -30,10 +31,18 @@ contract ETHPool {
     }
 
     receive() external payable {
+        require(msg.value > 0, "Deposit must be greater than zero.");
+        require(
+            deposits[msg.sender] + msg.value <= MAX_DEPOSIT_PER_USER,
+            "Deposit exceeds per-user limit."
+        );
+
         emit Deposited(msg.sender, msg.value);
+
         if (deposits[msg.sender] == 0) {
             depositors.push(msg.sender);
         }
+
         deposits[msg.sender] += msg.value;
         totalDeposited += msg.value;
 
@@ -62,24 +71,28 @@ contract ETHPool {
         require(totalDeposited > 0, "No deposits recorded.");
 
         uint256 amountToUnstake = address(this).balance;
-        
+
         // Call EigenLayer unstake function
         eigenLayerContract.unstake(address(this), amountToUnstake);
 
         emit Unstaked(amountToUnstake, address(this));
+    }
 
-        // Distribute the unstaked ETH to depositors proportionally
+    function distributeWithdrawnFunds() external {
+        require(address(this).balance > 0, "No ETH to distribute.");
+
+        uint256 contractBalance = address(this).balance;
+        
         for (uint256 i = 0; i < depositors.length; i++) {
-            address depositor = depositors[i];
-            uint256 depositorShare = (deposits[depositor] * amountToUnstake) / totalDeposited;
+            address user = depositors[i];
+            uint256 amount = (deposits[user] * contractBalance) / totalDeposited;
 
-            if (depositorShare > 0) {
-                (bool success, ) = payable(depositor).call{value: depositorShare}("");
+            if (amount > 0) {
+                (bool success, ) = payable(user).call{value: amount}("");
                 require(success, "ETH transfer failed");
             }
 
-            // Reset deposit mapping
-            deposits[depositor] = 0;
+            deposits[user] = 0;
         }
 
         // Reset pool state
@@ -87,4 +100,5 @@ contract ETHPool {
         unstakeVotes = 0;
         delete depositors;
     }
+
 }

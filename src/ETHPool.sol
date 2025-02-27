@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-interface IEigenLayer {
-    function unstake(address recipient, uint256 amount) external;
-}
-
 contract ETHPool {
     uint256 public constant STAKING_THRESHOLD = 32 ether;
     uint256 public constant UNSTAKE_VOTE_THRESHOLD_PERCENT = 51;
@@ -22,11 +18,9 @@ contract ETHPool {
     event VotedForUnstake(address indexed voter);
     event Unstaked(uint256 amount, address recipient);
 
-    IEigenLayer public eigenLayerContract;
     address public stakingRecipient;
 
-    constructor(address _eigenLayerContract, address _stakingRecipient) {
-        eigenLayerContract = IEigenLayer(_eigenLayerContract);
+    constructor(address _stakingRecipient) {
         stakingRecipient = _stakingRecipient;
     }
 
@@ -72,9 +66,7 @@ contract ETHPool {
 
         uint256 amountToUnstake = address(this).balance;
 
-        // Call EigenLayer unstake function
-        eigenLayerContract.unstake(address(this), amountToUnstake);
-
+        // Emit Unstake event to trigger P2P withdrawal
         emit Unstaked(amountToUnstake, address(this));
     }
 

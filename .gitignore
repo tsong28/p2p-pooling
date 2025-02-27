@@ -1,2 +1,9 @@
 node_modules
 .idea
+.env
+
+out/
+broadcast/
+cache/
+lib/
+

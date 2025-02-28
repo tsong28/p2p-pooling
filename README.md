@@ -1,13 +1,13 @@
 # Pooled Staking Dashboard
 
-A dashboard that integrates p2ps staking and restaking API functionalities to provide a way for users to stake in a pool.
+A project that integrates P2Ps staking and restaking API functionalities to provide a way for users to stake in a pool.
 
-This project was created as part of the 2025 Eigen Games following the p2p track.
+This project was created as part of the 2025 Eigen Games following the P2P track.
 
 ## Features
 
 - **Deposit and Staking/Restaking Functionality:**  
-  Deposit ETH into a pooled smart contract. Your ETH will be stake and restaked via p2p's staking and restaking api.
+  Deposit ETH into a pooled smart contract. Your ETH will be stake and restaked via P2P's staking and restaking api.
 
 - **Delegator Summary:**  
   View real-time details such as APY, your staked ETH, total rewards in the pool, and a breakdown of individual rewards.

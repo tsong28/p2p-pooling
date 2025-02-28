@@ -3,38 +3,41 @@
 import React, { useState, useEffect } from 'react';
 import { ethers, parseEther, formatEther } from 'ethers';
 
-// Replace with your contract's ABI
+const contractAddress = "0xb905137f59269f3F5C0f07BB6fF0A2561C39492a"; // Replace with your actual contract address
 const contractABI = [
-  "function deposit() public payable",
-  "function totalDeposits() public view returns (uint256)"
+  "function voteToUnstake() external",
+  "function distributeWithdrawnFunds() external",
 ];
-
-// Replace with your deployed contract's address
-const contractAddress = "0xYourContractAddress";
 
 const App = () => {
   const [depositAmount, setDepositAmount] = useState('');
   const [poolBalance, setPoolBalance] = useState('0');
   const [loading, setLoading] = useState(false);
+  const [voteLoading, setVoteLoading] = useState(false);
   const [error, setError] = useState('');
+  const [txId, setTxId] = useState('');
+  const [voteTxId, setVoteTxId] = useState('');
+  const [signer, setSigner] = useState(null);
   const [contract, setContract] = useState(null);
+  const [showVoteModal, setShowVoteModal] = useState(false);
+  const [voteSuccess, setVoteSuccess] = useState(false);
 
-  // Initialize the provider, signer, and contract instance
+  // Initialize provider, signer, and contract instance
   useEffect(() => {
     const initEthers = async () => {
       if (window.ethereum) {
         try {
-          // Request wallet connection
           await window.ethereum.request({ method: 'eth_requestAccounts' });
-          // For ethers v6, use BrowserProvider
           const provider = new ethers.BrowserProvider(window.ethereum);
           const signer = await provider.getSigner();
+          setSigner(signer);
           const contractInstance = new ethers.Contract(contractAddress, contractABI, signer);
           setContract(contractInstance);
-          fetchPoolBalance(contractInstance);
+          const balanceWei = await provider.getBalance(contractAddress);
+          setPoolBalance(formatEther(balanceWei));
         } catch (err) {
           console.error(err);
-          setError("Failed to connect to wallet.");   
+          setError("Failed to connect to wallet.");
         }
       } else {
         setError("Please install MetaMask.");
@@ -44,32 +47,37 @@ const App = () => {
     initEthers();
   }, []);
 
-  // Function to fetch the current pool balance from the contract
-  const fetchPoolBalance = async (contractInstance) => {
-    try {
-      const balanceWei = await contractInstance.balance;
-      // Use formatEther directly from ethers v6
-      setPoolBalance(formatEther(balanceWei));
-    } catch (err) {
-      console.error(err);
-      setError("Failed to fetch pool balance.");
+  // Send ETH directly using signer.sendTransaction
+  async function sendEther(amountToDeposit) {
+    if (!signer) {
+      console.error("Signer is not available");
+      throw new Error("Signer is not available");
     }
-  };
+    try {
+      const tx = await signer.sendTransaction({
+        to: contractAddress,
+        value: amountToDeposit
+      });
+      console.log("Deposit transaction sent:", tx.hash);
+      await tx.wait();
+      console.log("Deposit transaction confirmed");
+      setTxId(tx.hash);
+    } catch (err) {
+      console.error("Error sending deposit transaction:", err);
+      throw err;
+    }
+  }
 
-  // Handle the deposit action
   const handleDeposit = async () => {
-    if (!contract) return;
+    if (!signer) return;
     setError('');
     setLoading(true);
     try {
-      // Use parseEther directly from ethers v6
-      const tx = await contract.deposit({
-        value: parseEther(depositAmount)
-      });
-      // Wait for transaction confirmation
-      await tx.wait();
-      // Refresh the pool balance after deposit
-      fetchPoolBalance(contract);
+      const amountBN = parseEther(depositAmount);
+      await sendEther(amountBN);
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const balanceWei = await provider.getBalance(contractAddress);
+      setPoolBalance(formatEther(balanceWei));
       setDepositAmount('');
     } catch (err) {
       console.error(err);
@@ -78,12 +86,32 @@ const App = () => {
     setLoading(false);
   };
 
+  // Handle vote to withdraw action
+  const handleVoteWithdraw = async () => {
+    if (!contract) return;
+    setError('');
+    setVoteLoading(true);
+    try {
+      const tx = await contract.voteToUnstake();
+      console.log("Vote transaction sent:", tx.hash);
+      await tx.wait();
+      console.log("Vote transaction confirmed");
+      setVoteTxId(tx.hash);
+      setVoteSuccess(true);
+    } catch (err) {
+      console.error("Error sending vote transaction:", err);
+      setError("Vote failed. Please try again.");
+    }
+    setVoteLoading(false);
+    setShowVoteModal(false);
+  };
+
   return (
     <>
       <div className="container">
-        <h2>Deposit ETH into Pool</h2>
+        <h2>Deposit ETH</h2>
         <p className="balance">
-          <strong>Total ETH in Pool:</strong> {poolBalance} ETH
+          <strong>Total ETH at Address:</strong> {poolBalance} ETH
         </p>
         <div className="form">
           <input
@@ -101,25 +129,85 @@ const App = () => {
             {loading ? 'Depositing...' : 'Deposit'}
           </button>
         </div>
+        {txId && (
+          <p className="tx-id">
+            <strong>Deposit Transaction ID:</strong> {txId}
+          </p>
+        )}
+
+        <hr className="divider" />
+
+        <h2>Vote to Withdraw ETH</h2>
+        <p className="info">
+          Click the button below to vote to withdraw your ETH from the pool.
+        </p>
+        <button
+          onClick={() => setShowVoteModal(true)}
+          disabled={voteLoading}
+          className="vote-btn"
+        >
+          {voteLoading ? 'Voting...' : 'Vote to Withdraw'}
+        </button>
+        {voteTxId && (
+          <p className="tx-id">
+            <strong>Vote Transaction ID:</strong> {voteTxId}
+          </p>
+        )}
+        {voteSuccess && (
+          <p className="success-msg">
+            Your vote to unstake was successful!
+          </p>
+        )}
+
         {error && <p className="error">{error}</p>}
       </div>
 
+      {/* Vote Confirmation Modal */}
+      {showVoteModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h3 className="modal-title">Confirm Vote to Unstake</h3>
+            <p className="modal-text">
+              Are you sure you want to vote to withdraw your ETH from the pool?
+            </p>
+            <div className="modal-buttons">
+              <button
+                onClick={handleVoteWithdraw}
+                className="modal-confirm-btn"
+                disabled={voteLoading}
+              >
+                Yes, Vote
+              </button>
+              <button
+                onClick={() => setShowVoteModal(false)}
+                className="modal-cancel-btn"
+                disabled={voteLoading}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style jsx>{`
         .container {
-          max-width: 400px;
+          max-width: 500px;
           margin: 50px auto;
           padding: 30px;
           background-color: #ffffff;
           border-radius: 8px;
           box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
           font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          position: relative;
         }
         h2 {
           text-align: center;
           color: #333;
           margin-bottom: 20px;
         }
-        .balance {
+        .balance,
+        .info {
           text-align: center;
           font-size: 18px;
           margin-bottom: 20px;
@@ -140,7 +228,8 @@ const App = () => {
           outline: none;
           border-color: #4caf50;
         }
-        .deposit-btn {
+        .deposit-btn,
+        .vote-btn {
           padding: 12px;
           font-size: 16px;
           background-color: #4caf50;
@@ -150,19 +239,100 @@ const App = () => {
           cursor: pointer;
           transition: background-color 0.3s ease;
         }
-        .deposit-btn:hover:not(:disabled) {
+        .vote-btn {
+          display: block;
+          margin: 0 auto;
+        }
+        .deposit-btn:hover:not(:disabled),
+        .vote-btn:hover:not(:disabled) {
           background-color: #43a047;
         }
-        .deposit-btn:disabled {
+        .deposit-btn:disabled,
+        .vote-btn:disabled {
           background-color: #a5d6a7;
           cursor: not-allowed;
+        }
+        .tx-id {
+          margin-top: 20px;
+          text-align: center;
+          color: #333;
+          font-size: 14px;
+        }
+        .success-msg {
+          margin-top: 20px;
+          text-align: center;
+          color: green;
+          font-size: 16px;
+          font-weight: bold;
         }
         .error {
           margin-top: 20px;
           color: #e53935;
           text-align: center;
         }
-        /* Global body styling if needed */
+        .divider {
+          margin: 40px 0;
+          border-top: 1px solid #ddd;
+        }
+        /* Modal styling */
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(0, 0, 0, 0.5);
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          z-index: 1000;
+        }
+        .modal {
+          background-color: #fff;
+          padding: 20px;
+          border-radius: 8px;
+          max-width: 400px;
+          width: 100%;
+          text-align: center;
+          box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        .modal-title {
+          font-size: 20px;
+          margin-bottom: 10px;
+          color: #333;
+        }
+        .modal-text {
+          font-size: 16px;
+          margin-bottom: 20px;
+          color: #555;
+        }
+        .modal-buttons {
+          display: flex;
+          justify-content: space-around;
+        }
+        .modal-confirm-btn,
+        .modal-cancel-btn {
+          padding: 10px 20px;
+          font-size: 16px;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          transition: background-color 0.3s ease;
+        }
+        .modal-confirm-btn {
+          background-color: #4caf50;
+          color: #fff;
+        }
+        .modal-confirm-btn:hover:not(:disabled) {
+          background-color: #43a047;
+        }
+        .modal-cancel-btn {
+          background-color: #e53935;
+          color: #fff;
+        }
+        .modal-cancel-btn:hover:not(:disabled) {
+          background-color: #d32f2f;
+        }
         :global(body) {
           background-color: #f5f5f5;
           margin: 0;

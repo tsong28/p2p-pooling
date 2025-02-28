@@ -1,14 +1,15 @@
 import Web3 from "web3";
 import axios from "axios";
+import cron from "node-cron"; // For scheduled reward distribution
 import { exec } from "child_process";
 
-// Web3 Configuration
-const INFURA_URL = "wss://holesky.infura.io/ws/v3/YOUR_INFURA_KEY"; // Replace with actual Infura key
+// ✅ Web3 Configuration
+const INFURA_URL = "wss://holesky.infura.io/ws/v3/YOUR_INFURA_KEY"; 
 const web3 = new Web3(new Web3.providers.WebsocketProvider(INFURA_URL));
 
-// Contract Configuration
-const POOL_CONTRACT = "0xYourPoolContractAddress"; // Replace with actual contract address
-const STAKER_ADDRESS = "0xYourStakerAddress"; // Replace with your ETHPool contract's address
+// ✅ Contract Configuration
+const POOL_CONTRACT = "0xYourPoolContractAddress"; 
+const ADMIN_ADDRESS = "0xYourWalletAddress"; // Must be the contract owner
 const API_BASE_URL = "https://api-test-holesky.p2p.org/api/v1/";
 
 const ABI = [
@@ -23,13 +24,15 @@ const ABI = [
     "inputs": [{ "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" }],
     "name": "Unstaked",
     "type": "event"
-  }
+  },
+  { "inputs": [], "name": "claimAndDistributeRewards", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+  { "inputs": [], "name": "distributeWithdrawnFunds", "outputs": [], "stateMutability": "nonpayable", "type": "function" }
 ];
 
 const poolContract = new web3.eth.Contract(ABI, POOL_CONTRACT);
 console.log("🔍 Monitoring ETHPool events...");
 
-// **Monitor `ThresholdReached` Event (Triggers Staking)**
+// ✅ **Monitor `ThresholdReached` Event (Triggers Staking)**
 poolContract.events.ThresholdReached()
   .on("data", (event) => {
     console.log(`✅ 32 ETH reached! Staking initiated... Balance: ${event.returnValues.totalBalance / 1e18} ETH`);
@@ -39,7 +42,7 @@ poolContract.events.ThresholdReached()
     console.error("⚠️ Event Listening Error:", error);
   });
 
-// **Monitor `Unstaked` Event (Triggers Withdrawal)**
+// ✅ **Monitor `Unstaked` Event (Triggers Withdrawal)**
 poolContract.events.Unstaked()
   .on("data", async (event) => {
     const unstakeAmount = event.returnValues.amount;
@@ -49,7 +52,7 @@ poolContract.events.Unstaked()
       await initiateWithdrawal(unstakeAmount);
       console.log("✅ Withdrawal Process Initiated Successfully!");
 
-      // Wait for ETH to be withdrawn before distributing funds
+      // 🔄 Wait for ETH withdrawal before distributing funds
       setTimeout(async () => {
         console.log("💰 Checking if ETH is available for distribution...");
         
@@ -58,9 +61,9 @@ poolContract.events.Unstaked()
           console.log("💸 ETH Withdrawn! Distributing funds to depositors...");
           await callDistributeFunds();
         } else {
-          console.log("❌ ETH has not yet arrived in the contract. Will retry.");
+          console.log("❌ ETH has not yet arrived in the contract. Retrying...");
         }
-      }, 60000); // Adjust delay based on expected withdrawal confirmation time
+      }, 60000); // Check again in 1 minute
 
     } catch (error) {
       console.error("❌ Withdrawal Process Failed:", error.message);
@@ -70,21 +73,32 @@ poolContract.events.Unstaked()
     console.error("⚠️ Unstake Event Error:", error);
   });
 
-// Function to call `distributeWithdrawnFunds()` on the smart contract
-async function callDistributeFunds() {
-  try {
-    const tx = await poolContract.methods.distributeWithdrawnFunds().send({
-      from: "0xYourWalletAddress",  // Replace with the admin/deployer's address
-      gas: 300000
-    });
-    console.log("✅ Funds Distributed Successfully! TX Hash:", tx.transactionHash);
-  } catch (error) {
-    console.error("❌ Error Distributing Funds:", error.message);
-  }
+// ✅ **Scheduled Reward Distribution (Every 8 Days)**
+cron.schedule("0 0 */8 * *", async () => {
+    console.log("⏳ Checking if it's time for reward distribution...");
+    
+    try {
+        console.log("🚀 8 days passed! Distributing rewards...");
+        await distributeRewards();
+    } catch (error) {
+        console.error("❌ Error distributing rewards:", error.message);
+    }
+});
+
+// ✅ **Execute `claimAndDistributeRewards()` Every 8 Days**
+async function distributeRewards() {
+    try {
+        const tx = await poolContract.methods.claimAndDistributeRewards().send({
+            from: ADMIN_ADDRESS,
+            gas: 300000
+        });
+        console.log("✅ Rewards Distributed Successfully! TX Hash:", tx.transactionHash);
+    } catch (error) {
+        console.error("❌ Error Distributing Rewards:", error.message);
+    }
 }
 
-
-// **Execute Staking Script (`restake.js`)**
+// ✅ **Execute Staking Script (`restake.js`)**
 function triggerStaking() {
   console.log("⏳ Executing staking script...");
   exec("node restake.js", (error, stdout, stderr) => {
@@ -96,22 +110,16 @@ function triggerStaking() {
   });
 }
 
-// **Initiate Withdrawal Process**
+// ✅ **Initiate Withdrawal Process**
 async function initiateWithdrawal(amount) {
   console.log(`🔄 Initiating withdrawal process for ${amount / 1e18} ETH...`);
 
   try {
-    // **Step 1: Start Checkpoint**
     const checkpointData = await startCheckpoint();
     const checkpointId = checkpointData.result.checkpointId;
     
-    // **Step 2: Verify Checkpoint Proofs**
     await verifyCheckpointProofs(checkpointId);
-
-    // **Step 3: Queue Withdrawal Request**
     await queueWithdrawals(amount);
-
-    // **Step 4: Complete Queued Withdrawals**
     await completeQueuedWithdrawals();
 
     console.log("✅ Withdrawal Process Completed Successfully!");
@@ -121,17 +129,26 @@ async function initiateWithdrawal(amount) {
   }
 }
 
-// **Start Checkpoint**
+// ✅ **Call `distributeWithdrawnFunds()` When ETH is Available**
+async function callDistributeFunds() {
+  try {
+    const tx = await poolContract.methods.distributeWithdrawnFunds().send({
+      from: ADMIN_ADDRESS,
+      gas: 300000
+    });
+    console.log("✅ Funds Distributed Successfully! TX Hash:", tx.transactionHash);
+  } catch (error) {
+    console.error("❌ Error Distributing Funds:", error.message);
+  }
+}
+
+// ✅ **Start Checkpoint for EigenLayer Withdrawal**
 async function startCheckpoint() {
   const url = `${API_BASE_URL}eth/staking/eigenlayer/tx/start-checkpoint`;
-  const data = {
-    eigenPodOwnerAddress: STAKER_ADDRESS
-  };
+  const data = { eigenPodOwnerAddress: STAKER_ADDRESS };
 
   try {
-    const response = await axios.post(url, data, {
-      headers: getAuthorizationHeaders()
-    });
+    const response = await axios.post(url, data, { headers: getAuthorizationHeaders() });
     console.log("✅ Checkpoint Started:", response.data);
     return response.data;
   } catch (error) {
@@ -140,67 +157,11 @@ async function startCheckpoint() {
   }
 }
 
-// **Verify Checkpoint Proofs**
-async function verifyCheckpointProofs(checkpointId) {
-  const url = `${API_BASE_URL}eth/staking/eigenlayer/tx/verify-checkpoint-proofs`;
-  const data = {
-    checkpointId: checkpointId,
-    eigenPodOwnerAddress: STAKER_ADDRESS
-  };
-
-  try {
-    const response = await axios.post(url, data, {
-      headers: getAuthorizationHeaders()
-    });
-    console.log("✅ Checkpoint Proofs Verified:", response.data);
-  } catch (error) {
-    console.error("❌ Failed to Verify Checkpoint Proofs:", error.response?.data || error.message);
-    throw error;
-  }
-}
-
-// **Queue Withdrawals**
-async function queueWithdrawals(amount) {
-  const url = `${API_BASE_URL}eth/staking/eigenlayer/tx/queue-withdrawals`;
-  const data = {
-    eigenPodOwnerAddress: STAKER_ADDRESS,
-    amount: amount.toString()
-  };
-
-  try {
-    const response = await axios.post(url, data, {
-      headers: getAuthorizationHeaders()
-    });
-    console.log("✅ Withdrawals Queued:", response.data);
-  } catch (error) {
-    console.error("❌ Failed to Queue Withdrawals:", error.response?.data || error.message);
-    throw error;
-  }
-}
-
-// **Complete Queued Withdrawals**
-async function completeQueuedWithdrawals() {
-  const url = `${API_BASE_URL}eth/staking/eigenlayer/tx/complete-queued-withdrawals`;
-  const data = {
-    eigenPodOwnerAddress: STAKER_ADDRESS
-  };
-
-  try {
-    const response = await axios.post(url, data, {
-      headers: getAuthorizationHeaders()
-    });
-    console.log("✅ Withdrawals Completed:", response.data);
-  } catch (error) {
-    console.error("❌ Failed to Complete Withdrawals:", error.response?.data || error.message);
-    throw error;
-  }
-}
-
-// **Helper Function for API Headers**
+// ✅ **API Headers Helper**
 function getAuthorizationHeaders() {
   return {
     accept: "application/json",
-    authorization: "Bearer YOUR_P2P_API_KEY", // Replace with actual API Key
+    authorization: "Bearer YOUR_P2P_API_KEY",
     "content-type": "application/json",
   };
 }

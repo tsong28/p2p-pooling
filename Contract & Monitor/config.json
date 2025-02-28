@@ -1,9 +1,0 @@
-{
-  "privateKey": "",
-  "stakerAddress": "",
-  "url": "https://api-test-holesky.p2p.org/api/v1/",
-  "rpc": "https://ethereum-holesky-rpc.publicnode.com",
-  "token": "Bearer scwaeTkXzol07FHmCSzJSMAc9v64qAVp",
-  "lendingPlatform": "AAVE/Compound",
-  "maxLeverageFactor": 3
-}

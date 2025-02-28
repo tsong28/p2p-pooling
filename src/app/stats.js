@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { sampleResponse } from './sampleData'; // Adjust the path as needed
 
-const DelegatorSummary = () => {
+const DelegatorSummary = ({stakedEth}) => {
   const [delegatorData, setDelegatorData] = useState(null);
   const [rewardRate, setRewardRate] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -21,16 +21,12 @@ const DelegatorSummary = () => {
   };
 
   // Add any required headers (update as needed)
-  const headers = {
+  headers = {
+    "Authorization": "Bearer scwaeTkXzol07FHmCSzJSMAc9v64qAVp",
     "Content-Type": "application/json"
-    // "Authorization": "Bearer YOUR_API_TOKEN" // Uncomment and update if needed.
-  };
+  }
 
-  // Base URL for the API; update with your actual endpoint.
-  const baseUrl = 'https://api.example.com'; 
-  // Format the URL (assuming the API endpoint uses the network as a path parameter)
-  const url = `${baseUrl}/${params.network}/delegator-summary`;
-
+  const url =`https://api.p2p.org/api/v1/${params.network}/data/delegator/summary`;
   const fetchDelegatorSummary = async () => {
     setLoading(true);
     setError('');
@@ -43,12 +39,12 @@ const DelegatorSummary = () => {
       // }
       // const data = await response.json();
 
-      // For testing purposes, simulate API delay and use sample data.
       await new Promise((resolve) => setTimeout(resolve, 1000)); // simulate delay
       const data = sampleResponse;
 
       if (data && data.result && data.result.list && data.result.list.length > 0) {
         const summary = data.result.list[0];
+        summary.stake = stakedEth;
         setDelegatorData(summary);
         // Calculate total rewards by summing the reward amounts.
         const totalRewards = summary.rewards.reduce((acc, reward) => {
@@ -91,7 +87,10 @@ const DelegatorSummary = () => {
             <span className="font-semibold">Total Rewards in Pool:</span> {delegatorData.rewards.reduce((acc, reward) => acc + parseFloat(reward.amount), 0)} {delegatorData.rewards[0]?.currency}
           </p>
           <p className="text-lg">
-            <span className="font-semibold">Reward per ETH Staked:</span> {rewardRate !== null ? rewardRate.toFixed(4) : '0.0000'}
+            <span className="font-semibold">Reward per ETH Staked:</span> {rewardRate !== null ? rewardRate.toFixed(4)  : '0.0000'}
+          </p>
+          <p className="text-lg">
+            <span className="font-semibold">Your Rewards:</span> {rewardRate !== null ? (rewardRate* stakedEth).toFixed(4) : '0.0000'} {delegatorData.currency}
           </p>
           <div className="mt-6 border-t pt-4">
             <h3 className="text-xl font-bold text-gray-700 mb-2">Individual Rewards</h3>

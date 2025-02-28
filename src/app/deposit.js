@@ -1,53 +1,27 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ethers, parseEther, formatEther } from 'ethers';
-
-const contractAddress = "0xb905137f59269f3F5C0f07BB6fF0A2561C39492a"; // Replace with your actual contract address
+const contractAddress = "0x447cFe1126f5bC9700542540A7Ad3e14779230f7";
 const contractABI = [
   "function voteToUnstake() external",
   "function distributeWithdrawnFunds() external",
 ];
 
-const App = () => {
+const App = ({error, contract, signer, poolBalance, setPoolBalance}) => {
   const [depositAmount, setDepositAmount] = useState('');
-  const [poolBalance, setPoolBalance] = useState('0');
+
   const [loading, setLoading] = useState(false);
   const [voteLoading, setVoteLoading] = useState(false);
-  const [error, setError] = useState('');
+
   const [txId, setTxId] = useState('');
   const [voteTxId, setVoteTxId] = useState('');
-  const [signer, setSigner] = useState(null);
-  const [contract, setContract] = useState(null);
+
   const [showVoteModal, setShowVoteModal] = useState(false);
   const [voteSuccess, setVoteSuccess] = useState(false);
 
-  // Initialize provider, signer, and contract instance
-  useEffect(() => {
-    const initEthers = async () => {
-      if (window.ethereum) {
-        try {
-          await window.ethereum.request({ method: 'eth_requestAccounts' });
-          const provider = new ethers.BrowserProvider(window.ethereum);
-          const signer = await provider.getSigner();
-          setSigner(signer);
-          const contractInstance = new ethers.Contract(contractAddress, contractABI, signer);
-          setContract(contractInstance);
-          const balanceWei = await provider.getBalance(contractAddress);
-          setPoolBalance(formatEther(balanceWei));
-        } catch (err) {
-          console.error(err);
-          setError("Failed to connect to wallet.");
-        }
-      } else {
-        setError("Please install MetaMask.");
-      }
-    };
 
-    initEthers();
-  }, []);
-
-  // Send ETH directly using signer.sendTransaction
+  // Send ETH
   async function sendEther(amountToDeposit) {
     if (!signer) {
       console.error("Signer is not available");
@@ -70,7 +44,7 @@ const App = () => {
 
   const handleDeposit = async () => {
     if (!signer) return;
-    setError('');
+
     setLoading(true);
     try {
       const amountBN = parseEther(depositAmount);
@@ -81,7 +55,7 @@ const App = () => {
       setDepositAmount('');
     } catch (err) {
       console.error(err);
-      setError("Deposit failed. Please try again.");
+
     }
     setLoading(false);
   };
@@ -162,7 +136,7 @@ const App = () => {
         {error && <p className="error">{error}</p>}
       </div>
 
-      {/* Vote Confirmation Modal */}
+
       {showVoteModal && (
         <div className="modal-overlay">
           <div className="modal">
